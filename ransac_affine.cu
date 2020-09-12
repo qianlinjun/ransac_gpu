@@ -396,7 +396,7 @@ int ransac_gpu(double *Ａ_points, double *B_points,
     cudaFree(d_maxinlines_nums_PerThread);
     free(affineModel);
     free(maxinlines_nums_PerThread);
-return max_inlines_nums;
+    return max_inlines_nums;
 }
 
 
