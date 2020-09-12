@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h> 
-#include <math.h> 
+#include <stdlib.h>
+#include <math.h>
 #include "timerc.h"
 
 #define PHI 0x9e3779b9
@@ -48,18 +48,18 @@ __device__ int randInRange(int min, int max, uint32_t seed) {
 }
 
 
-/* 
+/*
 * RETURNS: d, distance from  point p to the line Ax + By = C
 */
 __host__ __device__ double distanceFromLine(double x, double y, double a, double b, double c) {
-    double d = abs((a * x + b * y + c)) / (sqrt(a * a + b * b)); 
+    double d = abs((a * x + b * y + c)) / (sqrt(a * a + b * b));
 
     return d;
 }
 
 
 
-/* 
+/*
 * RETURNS: [A, B, C] for a line equation
 */
 __host__ __device__ double *lineFromPoints(double *out, double x1, double y1, double x2, double y2) {
@@ -106,23 +106,23 @@ __host__ __device__ double *lineFromPoints(double *out, double x1, double y1, do
 //                m10,m11,m12;
 //                0,    0,  1];
 
-__host__ __device__ double model_residual(const double * const affine_matrix, 
-                                            const double& A_x, const double& A_y, 
+__host__ __device__ double model_residual(const double * const affine_matrix,
+                                            const double& A_x, const double& A_y,
                                             const double& B_x, const double& B_y) {
 
     double pre_x = B_x * affine_matrix[0] + B_y * affine_matrix[1] + affine_matrix[2];
     double pre_y = B_x * affine_matrix[3] + B_y * affine_matrix[4] + affine_matrix[5];
-    double d = sqrt( (pre_x - A_x)^2 + (pre_y - A_y)^2 );//residual 
+    double d = sqrt( (pre_x - A_x)^2 + (pre_y - A_y)^2 );//residual
     return d;
 }
 
 // q=m*p; A=M*B
 
 
-__host__ __device__ double *AffineModelFromPoints(double *affine_matrix, 
+__host__ __device__ double *AffineModelFromPoints(double *affine_matrix,
                                                   const double& A_x1, const double& src_y1, const double& src_x2, const double& src_y2, const double& src_x3, const double& src_y3,
                                                   const double& dst_x1, const double& dst_y1, const double& dst_x2, const double& dst_y2, const double& dst_x3, const double& dst_y3) {
-    
+
     // A=MB
     double px12 = src_x1 - src_x2;
     double px13 = src_x1 - src_x3;
@@ -136,7 +136,7 @@ __host__ __device__ double *AffineModelFromPoints(double *affine_matrix,
     double qy12 = dst_y1 - dst_y2;
     double qy13 = dst_y1 - dst_y3;
     double qy23 = dst_y2 - dst_y3;
-    
+
 
     double det_m=px13*py12-px12*py13;
     double m00=(qx12*py23-qx23*py12)/(det_m);
@@ -152,7 +152,7 @@ __host__ __device__ double *AffineModelFromPoints(double *affine_matrix,
     affine_matrix=[m00,m12,m13;
                 m10,m11,m12;
                 0,    0,  1];
-    
+
 
     affine_matrix[0] = y1 - y2;
     affine_matrix[1] = x2 - x1;
@@ -175,7 +175,7 @@ __host__ __device__ double *AffineModelFromPoints(double *affine_matrix,
 如果是仿射模型的话　就是拟合一个仿射矩阵M，输入数据是[A_pt_i B_pt_i] A_pt_i是源原图像坐标B_pt_i是目标图像坐标 A=MB 求M
 */
 // double *data, double *lineArr,  int k, int t, int d, uint32_t seed, int numStreams, int stream
-__global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, double *d_affineModel, int* maxinlines_nums_PerThread, int max_trials, 
+__global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, double *d_affineModel, int* maxinlines_nums_PerThread, int max_trials,
                                     int inline_threshold, int stop_sample_num, uint32_t seed, int numStreams, int stream) {
     init_rand(seed);
     maxinlines_nums_PerThread[threadIdx.x] = 0;
@@ -185,7 +185,7 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, dou
     int scopeSize = max_trials / THREADSPERBLOCK / numStreams;
     int offset = 2 * threadIdx.x * scopeSize;//scopeSize step
 
-    double bestA, bestB, bestC, Ａ_x1, Ａ_y1, Ａ_x2, Ａ_y2, Ａ_x3, Ａ_y3, 
+    double bestA, bestB, bestC, Ａ_x1, Ａ_y1, Ａ_x2, Ａ_y2, Ａ_x3, Ａ_y3,
                                 B_x1, B_y1, B_x2, B_y2, B_x3, B_y3, residual;
 
     // double *A_shiftedData = &A_Pts[offset];
@@ -193,7 +193,7 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, dou
 
 
     double *line = &lineArr[threadIdx.x * 3];
-    
+
     // 每个thread responsiable for data in scope
     for (int i=0; i < scopeSize; i++) {
         inliers = 0;
@@ -223,7 +223,7 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, dou
 
         // Modeling a line between those two points
         // line = lineFromPoints(line, x1, y1, x2, y2);
-        AffineModelFromPoints(d_affineModel, Ａ_x1, Ａ_y1, Ａ_x2, Ａ_y2, Ａ_x3, Ａ_y3, 
+        AffineModelFromPoints(d_affineModel, Ａ_x1, Ａ_y1, Ａ_x2, Ａ_y2, Ａ_x3, Ａ_y3,
                                 B_x1, B_y1, B_x2, B_y2, B_x3, B_y3);
 
         /***********************
@@ -240,7 +240,7 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, dou
                 inliers++;
             }
         }
-        
+
         if (inliers > maxInliers) {
             maxInliers = inliers;
             bestA = line[0];
@@ -274,13 +274,13 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, dou
 
 
 void ransac_cpu(double *data, double *line, int k, int t, int d){
-    srand(time(NULL)); 
+    srand(time(NULL));
 
     int r, inliers;
     int maxInliers = 0;
 
     double bestA, bestB, bestC, x1, y1, x2, y2, dist;
-    
+
     for (int i=0; i < k; i++) {
         inliers = 0;
 
@@ -315,7 +315,7 @@ void ransac_cpu(double *data, double *line, int k, int t, int d){
                 inliers++;
             }
         }
-        
+
         if (inliers > maxInliers) {
             maxInliers = inliers;
             bestA = line[0];
@@ -323,7 +323,7 @@ void ransac_cpu(double *data, double *line, int k, int t, int d){
             bestC = line[2];
         }
 
-        if (maxInliers >= d) 
+        if (maxInliers >= d)
             break;
     }
 
@@ -340,14 +340,14 @@ void ransac_cpu(double *data, double *line, int k, int t, int d){
 
 
 
-int ransac_gpu(double *Ａ_points, double *B_points, 
+int ransac_gpu(double *Ａ_points, double *B_points,
              const char* model, int min_samples=3, float residual_threshold=10, max_trials=1024){
 
-// max_trials需要是1024的倍数
+// max_trials 需要是32/1024的倍数
 
-if (strlen(Ａ_points) != strlen(B_points)){
-    return;
-}
+    if (strlen(Ａ_points) != strlen(B_points)){
+        return;
+    }
 
     int matched_pts = strlen(Ａ_points);
     double *d_A_points, *d_B_points;
@@ -365,27 +365,38 @@ if (strlen(Ａ_points) != strlen(B_points)){
     cudaMalloc((void **) &d_affineModel, (9*THREADSPERBLOCK*sizeof(double)));
 
     // 每个thread都有一个最好的inlines
-    int *inlines_nums;
-    int *d_inlines_nums;
+    int *maxinlines_nums_PerThread;
+    int *d_maxinlines_nums_PerThread;
     // Each thread will need it's own line equation container
-    inlines_nums = (int *) malloc(THREADSPERBLOCK*sizeof(int));
-    cudaMalloc((void **) &d_inlines_nums, (THREADSPERBLOCK*sizeof(int)));
-    cudaMemcpy(d_inlines_nums, inlines_nums, (THREADSPERBLOCK*sizeof(int)), cudaMemcpyHostToDevice);
+    maxinlines_nums_PerThread = (int *) malloc(THREADSPERBLOCK*sizeof(int));
+    cudaMalloc((void **) &d_maxinlines_nums_PerThread, (THREADSPERBLOCK*sizeof(int)));
+    cudaMemcpy(d_maxinlines_nums_PerThread, maxinlines_nums_PerThread, (THREADSPERBLOCK*sizeof(int)), cudaMemcpyHostToDevice);
 
     ransac_gpu_optimal<<<1,THREADSPERBLOCK>>>(d_A_points, d_B_points, d_affineModel, maxinlines_nums_PerThread, max_trials, residual_threshold, pass / THREADSPERBLOCK, seed, 1, 0);
 
-    cudaMemcpy(inlines_nums, d_inlines_nums, (THREADSPERBLOCK*sizeof(int)), cudaMemcpyDeviceToHost);
+    cudaMemcpy(maxinlines_nums_PerThread, d_maxinlines_nums_PerThread, (THREADSPERBLOCK*sizeof(int)), cudaMemcpyDeviceToHost);
     cudaMemcpy(affineModel, d_affineModel, (9*THREADSPERBLOCK*sizeof(double)), cudaMemcpyDeviceToHost);
-    
-    for (int j=0; j < k; j=j+2) {
-            x1 = data[j*2];
-            y1 = data[j*2 + 1];
-            dist = distanceFromLine(x1, y1, line[0], line[1], line[2]);
-            if (dist <= t) {
-                inliers++;
-            }
+
+    int max_inlines_nums = 0;
+    for (int j=0; j < THREADSPERBLOCK; ++j) {
+            // x1 = data[j*2];
+            // y1 = data[j*2 + 1];
+            // dist = distanceFromLine(x1, y1, line[0], line[1], line[2]);
+            // if (dist <= t) {
+            //     inliers++;
+            // }
+            if (max_inlines_nums < maxinlines_nums_PerThread[j])
+                max_inlines_nums = maxinlines_nums_PerThread[j];
     }
 
+
+    cudaFree(d_A_points);
+    cudaFree(d_B_points);
+    cudaFree(d_affineModel);
+    cudaFree(d_maxinlines_nums_PerThread);
+    free(affineModel);
+    free(maxinlines_nums_PerThread);
+return max_inlines_nums;
 }
 
 
@@ -393,7 +404,7 @@ int main() {
     uint32_t seed = time(NULL);
     int match_pts_num = 100;//1024
 
-    srand(seed); 
+    srand(seed);
     int r;
 
     int pass = ITERATIONS / 2;//大于所有数据的1/2的话
@@ -420,17 +431,17 @@ int main() {
     //         points[j*2+1] = r;
     //     } else {
     //         points[j*2] = j-1 + vx;
-    //         points[j*2+1] = j-1 + vy; 
+    //         points[j*2+1] = j-1 + vy;
     //     }
     // }
-    
+
     // Shell to be used for outputting results in the form of line equation
     double *line = (double *) malloc(3*sizeof(double));
 
     // Copy points to file
     FILE *fp;
     fp = fopen("p.txt", "w+");
-    
+
     for (int i=0; i < 2*ITERATIONS; i++) {
         fprintf(fp,"%f ", points[i]);
     }
@@ -446,9 +457,9 @@ int main() {
     printf("CPU: A=%f | B=%f | C=%f \n", line[0], line[1], line[2]);
     puts("***");
 
-    
 
-    
+
+
     // cudaMalloc((void **) &d_points, (2*ITERATIONS*sizeof(double)));
     // cudaMemcpy(d_points, points, (2*ITERATIONS*sizeof(double)), cudaMemcpyHostToDevice);
 
