@@ -109,56 +109,64 @@ __host__ __device__ double *lineFromPoints(double *out, double x1, double y1, do
 __host__ __device__ double model_residual(const double * const affine_matrix,
                                             const double& A_x, const double& A_y,
                                             const double& B_x, const double& B_y) {
-
+    // q=m*p; A=M*B
     double pre_x = B_x * affine_matrix[0] + B_y * affine_matrix[1] + affine_matrix[2];
     double pre_y = B_x * affine_matrix[3] + B_y * affine_matrix[4] + affine_matrix[5];
     double d = sqrt( (pre_x - A_x)^2 + (pre_y - A_y)^2 );//residual
     return d;
 }
 
-// q=m*p; A=M*B
 
 
+// 计算仿射变换矩阵系数
 __host__ __device__ double *AffineModelFromPoints(double *affine_matrix,
-                                                  const double& A_x1, const double& src_y1, const double& src_x2, const double& src_y2, const double& src_x3, const double& src_y3,
-                                                  const double& dst_x1, const double& dst_y1, const double& dst_x2, const double& dst_y2, const double& dst_x3, const double& dst_y3) {
+                                                  const double& A_x1, const double& A_y1, const double& A_x2, const double& A_y2, const double& A_x3, const double& A_y3,
+                                                  const double& B_x1, const double& B_y1, const double& B_x2, const double& B_y2, const double& B_x3, const double& B_y3) {
 
-    // A=MB
-    double px12 = src_x1 - src_x2;
-    double px13 = src_x1 - src_x3;
-    double px23 = src_x2 - src_x3;
-    double py12 = src_y1 - src_y2;
-    double py13 = src_y1 - src_y3;
-    double py23 = src_y2 - src_y3;
-    double qx12 = dst_x1 - dst_x2;
-    double qx13 = dst_x1 - dst_x3;
-    double qx23 = dst_x2 - dst_x3;
-    double qy12 = dst_y1 - dst_y2;
-    double qy13 = dst_y1 - dst_y3;
-    double qy23 = dst_y2 - dst_y3;
+    // q=m*p; A=M*B
+    double px12 = B_x1 - B_x2;
+    double px13 = B_x1 - B_x3;
+    double px23 = B_x2 - B_x3;
+    double py12 = B_y1 - B_y2;
+    double py13 = B_y1 - B_y3;
+    double py23 = B_y2 - B_y3;
+    double qx12 = A_x1 - A_x2;
+    double qx13 = A_x1 - A_x3;
+    double qx23 = A_x2 - A_x3;
+    double qy12 = A_y1 - A_y2;
+    double qy13 = A_y1 - A_y3;
+    double qy23 = A_y2 - A_y3;
 
 
-    double det_m=px13*py12-px12*py13;
-    double m00=(qx12*py23-qx23*py12)/(det_m);
-    double m01=(qx23*px12-qx12*px23)/(det_m);
-    double m10=(qy12*py23-qy23*py12)/(det_m);
-    double m11=(qy23*px12-qy12*px23)/(det_m);
+    // %2.计算旋转放缩因子
+    double det_p=px13*py23-px23*py13;
+    double m00=(qx12*py23-qx23*py12)/(det_p);
+    double m01=(qx23*px12-qx12*px23)/(det_p);
+    double m10=(qy12*py23-qy23*py12)/(det_p);
+    double m11=(qy23*px12-qy12*px23)/(det_p);
 
     // %3.计算平移因子
-    double m13=dst_x计算指针数组的长度1-m00*scr_x1-m12*scr_y1;
-    double m12=dst_y计算指针数组的长度1-m10*scr_x1-m11*scr_y1;
-计算指针数组的长度
+    double m02 = A_x1-m00 * B_x1-m12 * B_y1;
+    double m12 = A_y1-m10 * B_x1-m11 * B_y1;
+
+
     // %4.实际输出仿射矩阵
     affine_matrix=[m00,m12,m13;
                 m10,m11,m12;
                 0,    0,  1];
 
 
-    affine_matrix[0] = y1 - y2;
-    affine_matrix[1] = x2 - x1;
-    affine_matrix[2] = (x1-x2)*y1 + (y2-y1)*x1;
+    affine_matrix[0] = m00;
+    affine_matrix[1] = m12;
+    affine_matrix[2] = m13;
+    affine_matrix[3] = m10;
+    affine_matrix[4] = m11;
+    affine_matrix[5] = m12;
+    affine_matrix[6] = 0;
+    affine_matrix[7] = 0;
+    affine_matrix[8] = 1;
 
-    return out;
+    return affine_matrix;
 }
 
 
@@ -204,19 +212,19 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts,
         *******************/
 
         // Choosing first random point
-        r = randInRange(0, matched_pts - 1, seed);
+        r = randInRange(0, 2*matched_pts - 1, seed);
         Ａ_x1 = A_Pts[r];
         A_y1 = A_Pts[r+1];
         B_x1 = B_Pts[r];
         B_y1 = B_Pts[r+1];
         // Choosing second random point
-        r = randInRange(0, matched_pts - 1, seed);
+        r = randInRange(0, 2*matched_pts - 1, seed);
         Ａ_x2 = A_Pts[r];
         Ａ_y2 = A_Pts[r+1];
         B_x2 = B_Pts[r];
         B_y2 = B_Pts[r+1];
         // Choosing second random point
-        r = randInRange(0, matched_pts - 1, seed);
+        r = randInRange(0, 2*matched_pts - 1, seed);
         Ａ_x3 = A_Pts[r];
         Ａ_y3 = A_Pts[r+1];
         B_x3 = B_Pts[r];
@@ -224,13 +232,13 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts,
 
         // Modeling a line between those two points
         // line = lineFromPoints(line, x1, y1, x2, y2);
-        AffineModelFromPoints(d_affineModel, Ａ_x1, Ａ_y1, Ａ_x2, Ａ_y2, Ａ_x3, Ａ_y3,
+        d_affineModel = AffineModelFromPoints(d_affineModel, Ａ_x1, Ａ_y1, Ａ_x2, Ａ_y2, Ａ_x3, Ａ_y3,
                                 B_x1, B_y1, B_x2, B_y2, B_x3, B_y3);
 
         /***********************
         FINDING INLIERS FOR LINE
         ***********************/
-        for (int j=0; j < matched_pts; j=j+2) {
+        for (int j=0; j < 2*matched_pts; j=j+2) {
             Ａ_x1 = A_Pts[j];
             Ａ_y1 = A_Pts[j + 1];
             B_x1 = B_Pts[j];
@@ -270,6 +278,8 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts,
     // }
 
     __syncthreads();
+
+    // 依据内点 找出最好的模型
     int max_inlines_nums = 0;
     for (int j=0; j < threads_num; ++j) {
         // x1 = data[j*2];
