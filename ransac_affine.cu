@@ -175,15 +175,16 @@ __host__ __device__ double *AffineModelFromPoints(double *affine_matrix,
 如果是仿射模型的话　就是拟合一个仿射矩阵M，输入数据是[A_pt_i B_pt_i] A_pt_i是源原图像坐标B_pt_i是目标图像坐标 A=MB 求M
 */
 // double *data, double *lineArr,  int k, int t, int d, uint32_t seed, int numStreams, int stream
-__global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, double *d_affineModel, int* maxinlines_nums_PerThread, int max_trials,
-                                    int inline_threshold, int stop_sample_num, uint32_t seed, int numStreams, int stream) {
+__global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts,
+                                   int matched_pts, int threads_num, int scopeSize, int inline_threshold, int stop_sample_num, uint32_t seed,
+                                   double *d_affineModel_Arr, int* maxinlines_nums_PerThread) {
     init_rand(seed);
     maxinlines_nums_PerThread[threadIdx.x] = 0;
 
     int r, inliers;
     int maxInliers = 0;
-    int scopeSize = max_trials / THREADSPERBLOCK / numStreams;
-    int offset = 2 * threadIdx.x * scopeSize;//scopeSize step
+    // int scopeSize = max_trials / THREADSPERBLOCK / numStreams;
+    // int offset = 2 * threadIdx.x * scopeSize;//scopeSize step
 
     double bestA, bestB, bestC, Ａ_x1, Ａ_y1, Ａ_x2, Ａ_y2, Ａ_x3, Ａ_y3,
                                 B_x1, B_y1, B_x2, B_y2, B_x3, B_y3, residual;
@@ -192,7 +193,7 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, dou
     // double *B_shiftedData = &B_Pts[offset];
 
 
-    double *line = &lineArr[threadIdx.x * 3];
+    double *d_affineModel = &d_affineModel_Arr[threadIdx.x * 9];
 
     // 每个thread responsiable for data in scope
     for (int i=0; i < scopeSize; i++) {
@@ -203,19 +204,19 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, dou
         *******************/
 
         // Choosing first random point
-        r = randInRange(0, scopeSize*2 - 1, seed);
+        r = randInRange(0, matched_pts - 1, seed);
         Ａ_x1 = A_Pts[r];
         A_y1 = A_Pts[r+1];
         B_x1 = B_Pts[r];
         B_y1 = B_Pts[r+1];
         // Choosing second random point
-        r = randInRange(0, scopeSize*2 - 1, seed);
+        r = randInRange(0, matched_pts - 1, seed);
         Ａ_x2 = A_Pts[r];
         Ａ_y2 = A_Pts[r+1];
         B_x2 = B_Pts[r];
         B_y2 = B_Pts[r+1];
         // Choosing second random point
-        r = randInRange(0, scopeSize*2 - 1, seed);
+        r = randInRange(0, matched_pts - 1, seed);
         Ａ_x3 = A_Pts[r];
         Ａ_y3 = A_Pts[r+1];
         B_x3 = B_Pts[r];
@@ -229,7 +230,7 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, dou
         /***********************
         FINDING INLIERS FOR LINE
         ***********************/
-        for (int j=0; j < scopeSize*2; j=j+2) {
+        for (int j=0; j < matched_pts; j=j+2) {
             Ａ_x1 = A_Pts[j];
             Ａ_y1 = A_Pts[j + 1];
             B_x1 = B_Pts[j];
@@ -243,9 +244,9 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, dou
 
         if (inliers > maxInliers) {
             maxInliers = inliers;
-            bestA = line[0];
-            bestB = line[1];
-            bestC = line[2];
+            // bestA = line[0];
+            // bestB = line[1];
+            // bestC = line[2];
         }
 
         // if (maxInliers >= ( stop_sample_num / THREADSPERBLOCK)) {
@@ -267,6 +268,21 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, dou
     // if (threadIdx.x == 0 && stream % 4 == 0) {
     //     printf("GPU w/ Streams: A=%f | B=%f | C=%f \n", bestA, bestB, bestC);
     // }
+
+    __syncthreads();
+    int max_inlines_nums = 0;
+    for (int j=0; j < threads_num; ++j) {
+        // x1 = data[j*2];
+        // y1 = data[j*2 + 1];
+        // dist = distanceFromLine(x1, y1, line[0], line[1], line[2]);
+        // if (dist <= t) {
+        //     inliers++;
+        // }
+        if (max_inlines_nums < maxinlines_nums_PerThread[j])
+                max_inlines_nums = maxinlines_nums_PerThread[j];
+    }
+    return max_inlines_nums;
+
 }
 
 
@@ -340,54 +356,47 @@ void ransac_cpu(double *data, double *line, int k, int t, int d){
 
 
 
-int ransac_gpu(double *Ａ_points, double *B_points,
-             const char* model, int min_samples=3, float residual_threshold=10, max_trials=1024){
+int ransac_gpu(double *A_points, double *B_points, const int matched_pts,
+             const char* model, int min_samples=3, float inline_threshold=10, max_trials=1024){
 
 // max_trials 需要是32/1024的倍数
 
-    if (strlen(Ａ_points) != strlen(B_points)){
+    if (strlen(A_points) != strlen(B_points)){
         return;
     }
 
-    int matched_pts = strlen(Ａ_points);
+    int threads_num = max_trials <= THREADSPERBLOCK ? max_trials:THREADSPERBLOCK;
+    int scopeSize = max_trials / threads_num / numStreams;
+
+
     double *d_A_points, *d_B_points;
     cudaMalloc((void **) &d_A_points, (2*matched_pts*sizeof(double)));
     cudaMalloc((void **) &d_B_points, (2*matched_pts*sizeof(double)));
 
-    cudaMemcpy(d_A_points, Ａ_points, (2*matched_pts*sizeof(double)), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_A_points, A_points, (2*matched_pts*sizeof(double)), cudaMemcpyHostToDevice);
     cudaMemcpy(d_B_points, B_points, (2*matched_pts*sizeof(double)), cudaMemcpyHostToDevice);
 
     // model parameter
     double *affineModel;
     double *d_affineModel;
     // Each thread will need it's own line equation container
-    affineModel = (double *) malloc(9*THREADSPERBLOCK*sizeof(double));
-    cudaMalloc((void **) &d_affineModel, (9*THREADSPERBLOCK*sizeof(double)));
+    affineModel = (double *) malloc(9 * threads_num * sizeof(double));
+    cudaMalloc((void **) &d_affineModel, (9 * threads_num * sizeof(double)));
 
     // 每个thread都有一个最好的inlines
     int *maxinlines_nums_PerThread;
     int *d_maxinlines_nums_PerThread;
     // Each thread will need it's own line equation container
-    maxinlines_nums_PerThread = (int *) malloc(THREADSPERBLOCK*sizeof(int));
-    cudaMalloc((void **) &d_maxinlines_nums_PerThread, (THREADSPERBLOCK*sizeof(int)));
-    cudaMemcpy(d_maxinlines_nums_PerThread, maxinlines_nums_PerThread, (THREADSPERBLOCK*sizeof(int)), cudaMemcpyHostToDevice);
+    maxinlines_nums_PerThread = (int *) malloc(threads_num * sizeof(int));
+    cudaMalloc((void **) &d_maxinlines_nums_PerThread, (threads_num*sizeof(int)));
+    cudaMemcpy(d_maxinlines_nums_PerThread, maxinlines_nums_PerThread, (threads_num*sizeof(int)), cudaMemcpyHostToDevice);
 
-    ransac_gpu_optimal<<<1,THREADSPERBLOCK>>>(d_A_points, d_B_points, d_affineModel, maxinlines_nums_PerThread, max_trials, residual_threshold, pass / THREADSPERBLOCK, seed, 1, 0);
 
-    cudaMemcpy(maxinlines_nums_PerThread, d_maxinlines_nums_PerThread, (THREADSPERBLOCK*sizeof(int)), cudaMemcpyDeviceToHost);
-    cudaMemcpy(affineModel, d_affineModel, (9*THREADSPERBLOCK*sizeof(double)), cudaMemcpyDeviceToHost);
+    int stop_sample_num = 8*matched_pts/10;
+    ransac_gpu_optimal<<<1, threads_num>>>(d_A_points, d_B_points, matched_pts, threads_num, scopeSize, inline_threshold, stop_sample_num, seed, d_affineModel, maxinlines_nums_PerThread);
 
-    int max_inlines_nums = 0;
-    for (int j=0; j < THREADSPERBLOCK; ++j) {
-            // x1 = data[j*2];
-            // y1 = data[j*2 + 1];
-            // dist = distanceFromLine(x1, y1, line[0], line[1], line[2]);
-            // if (dist <= t) {
-            //     inliers++;
-            // }
-            if (max_inlines_nums < maxinlines_nums_PerThread[j])
-                max_inlines_nums = maxinlines_nums_PerThread[j];
-    }
+    cudaMemcpy(maxinlines_nums_PerThread, d_maxinlines_nums_PerThread, (threads_num*sizeof(int)), cudaMemcpyDeviceToHost);
+    cudaMemcpy(affineModel, d_affineModel, (9 * threads_num * sizeof(double)), cudaMemcpyDeviceToHost);
 
 
     cudaFree(d_A_points);
@@ -396,7 +405,7 @@ int ransac_gpu(double *Ａ_points, double *B_points,
     cudaFree(d_maxinlines_nums_PerThread);
     free(affineModel);
     free(maxinlines_nums_PerThread);
-return max_inlines_nums;
+    return max_inlines_nums;
 }
 
 
