@@ -1,3 +1,8 @@
 ### GPU2020_Final
-# Parallel Implementation of ransac
-The final code can be found in ransac_final.cu
+# origin repo is https://github.com/abreuboom/GPU2020_Final.git
+
+#line model
+ransac_final.cu
+
+#add affine transform model for image ransac
+ransac_affine.cu
