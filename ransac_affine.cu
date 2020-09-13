@@ -267,6 +267,8 @@ __global__ void ransac_gpu_optimal(const double *A_Pts, const double *B_Pts, dou
     // if (threadIdx.x == 0 && stream % 4 == 0) {
     //     printf("GPU w/ Streams: A=%f | B=%f | C=%f \n", bestA, bestB, bestC);
     // }
+
+    maxinlines_nums_PerThread[threadIdx.x] = maxInliers;
 }
 
 
@@ -396,11 +398,7 @@ int ransac_gpu(double *Ａ_points, double *B_points,
     cudaFree(d_maxinlines_nums_PerThread);
     free(affineModel);
     free(maxinlines_nums_PerThread);
-<<<<<<< HEAD
     return max_inlines_nums;
-=======
-return max_inlines_nums;
->>>>>>> 8a3896be579385eba6b9beef3671a09d5467f291
 }
 
 
