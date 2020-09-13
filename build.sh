@@ -1,0 +1,2 @@
+nvcc  -gencode arch=compute_61,code=[sm_61,compute_61]  -DGPU -I/usr/local/cuda/include/ -DCUDNN  --compiler-options "-Wall -Wfatal-errors -Ofast -fopenmp -DGPU -DCUDNN -I/usr/local/cudnn/include" -c ./ransac_affine.cu  -Xcompiler -fPIC -o ./ransac_gpu.o
+gcc    -DGPU -I/usr/local/cuda/include/ -DCUDNN  -Wall -Wfatal-errors -Ofast  -fopenmp -DGPU -DCUDNN  ./ransac_gpu.o -fPIC -shared -o ransac_gpu.so -lm -pthread  -lgomp -L/usr/local/cuda/lib64 -lcuda -lcudart -lcublas -lcurand  -lcudnn -lstdc++ 
